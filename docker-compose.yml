@@ -1,0 +1,82 @@
+# version: "3.9"
+
+services:
+  web:
+    build: .
+    container_name: django_api
+    command: python manage.py runserver 0.0.0.0:8000
+    ports:
+      - "8000:8000"
+    volumes:
+      - .:/app
+    depends_on:
+      db:
+        condition: service_healthy
+        restart: true
+      redis:
+        condition: service_started
+    env_file:
+      - .env
+
+  db:
+    image: postgres:15
+    platform: linux/amd64
+    container_name: postgres_db
+    volumes:
+      - postgres_db:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    env_file:
+      - .env
+    environment:
+      POSTGRES_DB: ${DB_NAME}
+      POSTGRES_USER: ${DB_USER}
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER} -d ${DB_NAME}"]
+      interval: 10s
+      retries: 5
+      start_period: 30s
+      timeout: 10s
+
+  redis:
+    image: redis
+    ports:
+      - "6379:6379"
+  redis-commander:
+    image: rediscommander/redis-commander
+    ports:
+      - "8081:8081"
+    environment:
+      - REDIS_HOSTS=local:redis:6379
+
+  celery_worker:
+    build: .
+    container_name: celery_worker
+    command: celery -A who_tracker worker -l info
+    volumes:
+      - .:/app
+    env_file:
+      - .env
+    depends_on:
+      redis:
+        condition: service_started
+      web:
+        condition: service_started
+
+  celery_beat:
+    build: .
+    container_name: celery_beat
+    command: celery -A who_tracker beat -l info
+    volumes:
+      - .:/app
+    env_file:
+      - .env
+    depends_on:
+      redis:
+        condition: service_started
+      web:
+        condition: service_started
+
+volumes:
+  postgres_db:
