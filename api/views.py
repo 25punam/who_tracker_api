@@ -8,6 +8,10 @@ from .models import CVERecord
 from .serializers import CVERecordSerializer
 from .models import CeleryTaskTracker
 from celery.result import AsyncResult
+from rest_framework.throttling import AnonRateThrottle
+from .models import CVERecord
+from .serializers import CVERecordSerializer
+
 
 
 # Fetch WHO data → Celery task trigger API
@@ -49,3 +53,19 @@ class AllTasksStatusAPIView(APIView):
 class CVERecordListAPIView(ListAPIView):
     queryset = CVERecord.objects.all().order_by("-created_at")
     serializer_class = CVERecordSerializer
+
+class CVESearchAPIView(APIView):
+    throttle_classes = [AnonRateThrottle]
+
+    def get(self, request):
+        year = request.GET.get('year')
+
+        if not year:
+            return Response({"error": "year query parameter is required"}, status=400)
+        if not year.isdigit():
+            return Response({"error": "year must be a number"}, status=400)
+
+        qs = CVERecord.objects.filter(published_date__year=int(year))
+
+        serializer = CVERecordSerializer(qs, many=True)
+        return Response(serializer.data)
